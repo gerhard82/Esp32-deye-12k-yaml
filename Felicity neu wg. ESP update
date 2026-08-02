@@ -1,1 +1,2975 @@
+esphome:
+  name: felicity-battery
+  friendly_name: Felicity Battery
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: "6ZiigiIQHJvXzmeP1vqrn2DCfXAFVFuS4/m2735P75k="
+
+ota:
+  - platform: esphome
+    password: "0c5e68881e04d739697fecb68949e96c"
+
+wifi:
+  ssid: "BrandstetterFrit"
+  password: "75942950469470754868"
+  
+
+  
+  manual_ip:
+    static_ip: 192.168.178.242
+    gateway: 192.168.178.1
+    subnet: 255.255.254.0
+
+
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Felicity-Battery"
+    password: "Mtz3jgOfWoo1"
+
+captive_portal:
+
+
+
+# 1. Kommunikations-Schnittstelle
+uart:
+  id: uart_bus
+  tx_pin: GPIO17 # DEIN TX PIN (zum MAX485 DI)
+  rx_pin: GPIO16 # DEIN RX PIN (zum MAX485 RO)
+  baud_rate: 9600
+  stop_bits: 1
+
+modbus:
+  id: modbus_hub
+  uart_id: uart_bus
+  send_wait_time: 250ms       # Erhöht: Gibt der Hardware genug Zeit zum Umschalten    
+
+ 
+
+
+
+# --- MODBUS CONTROLLER (Die 6 Batterien) ---
+modbus_controller:
+  - id: bat1
+    address: 0x01
+    modbus_id: modbus_hub
+    setup_priority: -10
+    update_interval: 30s
+    command_throttle: 150ms
+  - id: bat2
+    address: 0x02
+    modbus_id: modbus_hub
+    setup_priority: -10
+    update_interval: 30s
+    command_throttle: 150ms
+  - id: bat3
+    address: 0x03
+    modbus_id: modbus_hub
+    setup_priority: -10
+    update_interval: 30s
+    command_throttle: 150ms
+  - id: bat4
+    address: 0x04
+    modbus_id: modbus_hub
+    setup_priority: -10
+    update_interval: 30s
+    command_throttle: 150ms
+  - id: bat5
+    address: 0x05
+    modbus_id: modbus_hub
+    setup_priority: -10
+    update_interval: 30s
+    command_throttle: 150ms
+  - id: bat6
+    address: 0x06
+    modbus_id: modbus_hub
+    setup_priority: -10
+    update_interval: 30s
+    command_throttle: 150ms
+
+# --- SENSOR LOGIK (Vorlage für alle 16 Zellen + 8 Temps) ---
+sensor:
+
+  # --- Gesamtwerte aller Batterien ---
+  - platform: template
+    name: "Batterie Gesamt SOC"
+    id: total_battery_soc
+    unit_of_measurement: "%"
+    # Berechnet den Durchschnitt von allen 6 Batterien
+    lambda: |-
+      return (id(b1_soc).state + id(b2_soc).state + id(b3_soc).state + 
+              id(b4_soc).state + id(b5_soc).state + id(b6_soc).state) / 6.0;
+    update_interval: 60s
+
+  # ---- platform: template
+  #  name: "Batterie Gesamt Spannung"
+  #  id: total_battery_voltage
+  #  unit_of_measurement: "V"
+  #  # Die Spannung ist parallel meist identisch, wir nehmen den Durchschnitt
+  #  lambda: |-
+  #    return (id(b1_voltage).state + id(b2_voltage).state + id(b3_voltage).state + 
+  #            id(b4_voltage).state + id(b5_voltage).state + id(b6_voltage).state) / 6.0;
+    
+
+
+  - platform: template
+    name: "Batterie Gesamt Strom"
+    id: total_battery_current
+    unit_of_measurement: "A"
+    accuracy_decimals: 1
+    # Summe aller 6 Ströme (B1 + B2 + B3 + B4 + B5 + B6)
+    lambda: |-
+      return (id(b1_current).state + id(b2_current).state + id(b3_current).state + 
+              id(b4_current).state + id(b5_current).state + id(b6_current).state);
+    
+
+
+  #- platform: template
+  #  name: "Batterie Gesamt Leistung"
+  #  id: total_battery_power
+  #  unit_of_measurement: "W"
+  #  accuracy_decimals: 0
+  #  # Summe aller 6 Leistungen
+  #  lambda: |-
+  #    return (id(b1_power).state + id(b2_power).state + id(b3_power).state + 
+  #            id(b4_power).state + id(b5_power).state + id(b6_power).state);
+    
+
+
+
+  - platform: template
+    name: "Batterie Gesamt CCL"
+    id: total_battery_ccl
+    unit_of_measurement: "A"
+    # Summe der erlaubten Ladeströme aller 6 Batterien
+    lambda: |-
+      return (id(b1_ccl).state + id(b2_ccl).state + id(b3_ccl).state + 
+              id(b4_ccl).state + id(b5_ccl).state + id(b6_ccl).state);
+    update_interval: 50s
+
+                    
+  - platform: template
+    name: "Batterie Gesamt DCL"
+    id: total_battery_dcl
+    unit_of_measurement: "A"
+    # Summe der erlaubten Entladeströme aller 6 Batterien 
+    lambda: |-
+      return (id(b1_dcl).state + id(b2_dcl).state + id(b3_dcl).state + 
+              id(b4_dcl).state + id(b5_dcl).state + id(b6_dcl).state);
+    update_interval: 50s
+
+
+
+
+
+
+  # --- TEMPERATUREN BATTERIE 1 ---
+
+
+  - platform: modbus_controller
+    modbus_controller_id: bat1
+    name: "B1 Temp 1"
+    address: 0x133A
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    filters:
+      - lambda: |-
+          if (x >= 32767) return {};
+          return x;
+      - throttle: 60s
+    
+          
+
+  - platform: modbus_controller
+    modbus_controller_id: bat1
+    name: "B1 Temp 2"
+    address: 0x133B
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    filters:
+      - lambda: |-
+          if (x >= 32767) return {};
+          return x;
+      - throttle: 60s
+
+
+  - platform: modbus_controller
+    modbus_controller_id: bat1
+    name: "B1 Temp 3"
+    address: 0x133C
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    filters:
+      - lambda: |-
+          if (x >= 32767) return {};
+          return x;
+      - throttle: 60s
+
+
+  - platform: modbus_controller
+    modbus_controller_id: bat1
+    name: "B1 Temp 4"
+    address: 0x133D
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    filters:
+      - lambda: |-
+          if (x >= 32767) return {};
+          return x;
+      - throttle: 60s
+
+
+
+  # --- SPANNUNG (Basis für Power-Berechnung) ---
+  - platform: modbus_controller
+    modbus_controller_id: bat1
+    id: b1_voltage
+    name: "B1 Spannung Gesamt"
+    address: 0x1306
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 2
+    filters:
+      - multiply: 0.01
+
+  # --- STROM (Current) ---
+  - platform: modbus_controller
+    modbus_controller_id: bat1
+    id: b1_current
+    name: "B1 Strom"
+    address: 0x1307
+    register_type: holding
+    value_type: S_WORD # S_WORD wichtig für Laden(-) / Entladen(+)
+    unit_of_measurement: "A"
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1
+
+  # --- LEISTUNG (Power - Berechnet) ---
+  - platform: template
+    name: "B1 Leistung"
+    id: b1_power
+    unit_of_measurement: "W"
+    device_class: power
+    state_class: measurement
+    accuracy_decimals: 1
+    lambda: |-
+      return id(b1_voltage).state * id(b1_current).state;
+    
+
+
+
+  - platform: modbus_controller
+    modbus_controller_id: bat1
+    name: "B1 BMS Temperatur"
+    address: 0x130A # Data9
+    register_type: holding
+    value_type: S_WORD
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    # Hier kein Multiplikator nötig laut "1°C" Unit in Tabelle
+
+  - platform: modbus_controller
+    modbus_controller_id: bat1
+    name: "B1 SOC"
+    id: b1_soc 
+    address: 0x130B # Data10
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "%"
+    accuracy_decimals: 0
+
+
+   # Basis für Status (Laden/Entladen erlaubt)
+  - platform: modbus_controller
+    modbus_controller_id: bat1
+    id: b1_status_raw
+    address: 0x1302
+    register_type: holding
+    value_type: U_WORD
+    internal: false
+
+  # Basis für Fehlermeldungen (Alarme)
+  - platform: modbus_controller
+    modbus_controller_id: bat1
+    id: b1_fault_raw
+    address: 0x1303
+    register_type: holding
+    value_type: U_WORD
+    internal: false
+  
+    
+
+
+  # --- KAPAZITÄT BATTERIE 1 (Register 0x1308 & 0x1309) ---
+
+
+
+  # --- MAXIMALE STRÖME (Charge / Discharge) ---
+  - platform: modbus_controller
+    modbus_controller_id: bat1
+    name: "B1 Max Ladestrom"
+    id: b1_ccl 
+    address: 0x131E # Register für Max Charge Current
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "A"
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1 # Zeigt dann 80.0 A
+      - throttle: 50s
+          
+          
+
+  - platform: modbus_controller
+    modbus_controller_id: bat1
+    name: "B1 Max Entladestrom"
+    id: b1_dcl
+    address: 0x131F # Register für Max Discharge Current
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "A"
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1 # Zeigt dann 80.0 A
+      - throttle: 50s
+
+
+   # --- RÜCKLESE-SENSOR FÜR DIE LADEGRENZE ---
+  - platform: modbus_controller
+    modbus_controller_id: bat1
+    name: "B1 Ladespannung (BMS Bestätigung)"
+    address: 0x0100 # Dasselbe Register wie beim 'number' Feld
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1 # Wandelt 560 zurück in 56.0V
+      - throttle: 50s
+    
+
+   # --- DIE 16 ZELLEN (Korrekt eingerückt) ---
+  - platform: modbus_controller
+    modbus_controller_id: bat1
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters:
+      - multiply: 0.001
+    # Ab hier die 16 Sensoren (Adressen 4906 bis 4921)
+    name: "B1 Zelle 01a"
+    address: 4906
+    id: b1_z1
+  - platform: modbus_controller
+    modbus_controller_id: bat1
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B1 Zelle 02a"
+    address: 4907
+    id: b1_z2
+  - platform: modbus_controller
+    modbus_controller_id: bat1
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B1 Zelle 03a"
+    address: 4908
+    id: b1_z3
+  - platform: modbus_controller
+    modbus_controller_id: bat1
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B1 Zelle 04a"
+    address: 4909
+    id: b1_z4
+  - platform: modbus_controller
+    modbus_controller_id: bat1
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B1 Zelle 05a"
+    address: 4910
+    id: b1_z5
+  - platform: modbus_controller
+    modbus_controller_id: bat1
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B1 Zelle 06a"
+    address: 4911
+    id: b1_z6
+  - platform: modbus_controller
+    modbus_controller_id: bat1
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B1 Zelle 07a"
+    address: 4912
+    id: b1_z7
+  - platform: modbus_controller
+    modbus_controller_id: bat1
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B1 Zelle 08a"
+    address: 4913
+    id: b1_z8
+  - platform: modbus_controller
+    modbus_controller_id: bat1
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B1 Zelle 09a"
+    address: 4914
+    id: b1_z9
+  - platform: modbus_controller
+    modbus_controller_id: bat1
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B1 Zelle 10a"
+    address: 4915
+    id: b1_z10
+  - platform: modbus_controller
+    modbus_controller_id: bat1
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B1 Zelle 11a"
+    address: 4916
+    id: b1_z11
+  - platform: modbus_controller
+    modbus_controller_id: bat1
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B1 Zelle 12a"
+    address: 4917
+    id: b1_z12
+  - platform: modbus_controller
+    modbus_controller_id: bat1
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B1 Zelle 13a"
+    address: 4918
+    id: b1_z13
+  - platform: modbus_controller
+    modbus_controller_id: bat1
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B1 Zelle 14a"
+    address: 4919
+    id: b1_z14
+  - platform: modbus_controller
+    modbus_controller_id: bat1
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B1 Zelle 15a"
+    address: 4920
+    id: b1_z15
+  - platform: modbus_controller
+    modbus_controller_id: bat1
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B1 Zelle 16a"
+    address: 4921
+    id: b1_z16
+
+
+
+    # --- ZELL-DRIFT ---
+  - platform: template
+    name: "B1 Zell-Drift"
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    lambda: |-
+      float cells[] = {id(b1_z1).state, id(b1_z2).state, id(b1_z3).state, id(b1_z4).state,
+                       id(b1_z5).state, id(b1_z6).state, id(b1_z7).state, id(b1_z8).state,
+                       id(b1_z9).state, id(b1_z10).state, id(b1_z11).state, id(b1_z12).state,
+                       id(b1_z13).state, id(b1_z14).state, id(b1_z15).state, id(b1_z16).state};
+      float max_v = cells[0], min_v = cells[0];
+      for (int i = 1; i < 16; i++) {
+        if (cells[i] > max_v) max_v = cells[i];
+        if (cells[i] < min_v) min_v = cells[i];
+      }
+      return (max_v - min_v) * 1;
+    update_interval: 20s
+
+
+
+    # --- KAPAZITÄT (170 Ah FIX) ---
+  - platform: template
+    name: "B1 Gesamtkapazität1"
+    unit_of_measurement: "Ah"
+    lambda: "return 170.0;"
+    update_interval: 90s
+
+
+  - platform: modbus_controller
+    modbus_controller_id: bat1
+    name: "B1 SoH"
+    address: 0x133F
+    register_type: holding
+    unit_of_measurement: "%"
+    value_type: U_WORD
+    filters: 
+      - lambda: if (x > 100) return 100; else return x; 
+      - throttle: 90s
+          
+
+  - platform: modbus_controller
+    modbus_controller_id: bat1
+    name: "B1 Ladezyklen"
+    address: 0x133C
+    register_type: holding
+    unit_of_measurement: "Zyklen"
+    value_type: U_WORD
+
+  - platform: modbus_controller
+    modbus_controller_id: bat1
+    name: "B1 Zyklus Kapazität"
+    address: 0x133D
+    register_type: holding
+    unit_of_measurement: "Ah"
+    value_type: U_WORD
+    
+
+
+
+
+
+
+  # --- Battery 2 ---
+  # --- TEMPERATUREN BATTERIE 2 ---
+
+  - platform: modbus_controller
+    modbus_controller_id: bat2
+    name: "B2 Temp 1"
+    address: 0x133A
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    filters:
+      - lambda: |-
+          if (x >= 32767) return {};
+          return x;
+      - throttle: 60s
+
+
+  - platform: modbus_controller
+    modbus_controller_id: bat2
+    name: "B2 Temp 2"
+    address: 0x133B
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    filters:
+      - lambda: |-
+          if (x >= 32767) return {};
+          return x;
+      - throttle: 60s
+
+
+  - platform: modbus_controller
+    modbus_controller_id: bat2
+    name: "B2 Temp 3"
+    address: 0x133C
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    filters:
+      - lambda: |-
+          if (x >= 32767) return {};
+          return x;
+      - throttle: 60s
+
+
+  - platform: modbus_controller
+    modbus_controller_id: bat2
+    name: "B2 Temp 4"
+    address: 0x133D
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    filters:
+      - lambda: |-
+          if (x >= 32767) return {};
+          return x;
+      - throttle: 60s
+
+
+
+  # --- SPANNUNG (Basis für Power-Berechnung) ---
+  - platform: modbus_controller
+    modbus_controller_id: bat2
+    id: b2_voltage
+    name: "B2 Spannung Gesamt"
+    address: 0x1306
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 2
+    filters:
+      - multiply: 0.01
+
+  # --- STROM (Current) ---
+  - platform: modbus_controller
+    modbus_controller_id: bat2
+    id: b2_current
+    name: "B2 Strom"
+    address: 0x1307
+    register_type: holding
+    value_type: S_WORD # S_WORD wichtig für Laden(-) / Entladen(+)
+    unit_of_measurement: "A"
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1
+
+  # --- LEISTUNG (Power - Berechnet) ---
+  - platform: template
+    name: "B2 Leistung"
+    id: b2_power
+    unit_of_measurement: "W"
+    device_class: power
+    state_class: measurement
+    accuracy_decimals: 1
+    lambda: |-
+      return id(b2_voltage).state * id(b2_current).state;
+    
+
+
+
+  - platform: modbus_controller
+    modbus_controller_id: bat2
+    name: "B2 BMS Temperatur"
+    address: 0x130A # Data9
+    register_type: holding
+    value_type: S_WORD
+    unit_of_measurement: "°C"
+    accuracy_decimals: 0
+    # Hier kein Multiplikator nötig laut "1°C" Unit in Tabelle
+
+  - platform: modbus_controller
+    modbus_controller_id: bat2
+    name: "B2 SOC"
+    id: b2_soc
+    address: 0x130B # Data10
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "%"
+    accuracy_decimals: 0
+
+
+   # Basis für Status (Laden/Entladen erlaubt)
+  - platform: modbus_controller
+    modbus_controller_id: bat2
+    id: b2_status_raw
+    address: 0x1302
+    register_type: holding
+    value_type: U_WORD
+    internal: false
+
+  # Basis für Fehlermeldungen (Alarme)
+  - platform: modbus_controller
+    modbus_controller_id: bat2
+    id: b2_fault_raw
+    address: 0x1303
+    register_type: holding
+    value_type: U_WORD
+    internal: false
+  
+
+
+  # --- KAPAZITÄT BATTERIE 2 (Register 0x1308 & 0x1309) ---
+
+ 
+
+
+  # --- MAXIMALE STRÖME (Charge / Discharge) ---
+  - platform: modbus_controller
+    modbus_controller_id: bat2
+    name: "B2 Max Ladestrom"
+    id: b2_ccl
+    address: 0x131E # Register für Max Charge Current
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "A"
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1 # Zeigt dann 80.0 A
+      - throttle: 50s
+
+
+  - platform: modbus_controller
+    modbus_controller_id: bat2
+    name: "B2 Max Entladestrom"
+    id: b2_dcl 
+    address: 0x131F # Register für Max Discharge Current
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "A"
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1 # Zeigt dann 80.0 A
+      - throttle: 50s
+
+
+   # --- RÜCKLESE-SENSOR FÜR DIE LADEGRENZE ---
+  - platform: modbus_controller
+    modbus_controller_id: bat2
+    name: "B2 Ladespannung (BMS Bestätigung)"
+    address: 0x0100 # Dasselbe Register wie beim 'number' Feld
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1 # Wandelt 560 zurück in 56.0V
+      - throttle: 50s
+    
+
+   # --- DIE 16 ZELLEN (Korrekt eingerückt) ---
+  - platform: modbus_controller
+    modbus_controller_id: bat2
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters:
+      - multiply: 0.001
+    # Ab hier die 16 Sensoren (Adressen 4906 bis 4921)
+    name: "B2 Zelle 01a"
+    address: 4906
+    id: b2_z1
+  - platform: modbus_controller
+    modbus_controller_id: bat2
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B2 Zelle 02a"
+    address: 4907
+    id: b2_z2
+  - platform: modbus_controller
+    modbus_controller_id: bat2
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B2 Zelle 03a"
+    address: 4908
+    id: b2_z3
+  - platform: modbus_controller
+    modbus_controller_id: bat2
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B2 Zelle 04a"
+    address: 4909
+    id: b2_z4
+  - platform: modbus_controller
+    modbus_controller_id: bat2
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B2 Zelle 05a"
+    address: 4910
+    id: b2_z5
+  - platform: modbus_controller
+    modbus_controller_id: bat2
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B2 Zelle 06a"
+    address: 4911
+    id: b2_z6
+  - platform: modbus_controller
+    modbus_controller_id: bat2
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B2 Zelle 07a"
+    address: 4912
+    id: b2_z7
+  - platform: modbus_controller
+    modbus_controller_id: bat2
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B2 Zelle 08a"
+    address: 4913
+    id: b2_z8
+  - platform: modbus_controller
+    modbus_controller_id: bat2
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B2 Zelle 09a"
+    address: 4914
+    id: b2_z9
+  - platform: modbus_controller
+    modbus_controller_id: bat2
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B2 Zelle 10a"
+    address: 4915
+    id: b2_z10
+  - platform: modbus_controller
+    modbus_controller_id: bat2
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B2 Zelle 11a"
+    address: 4916
+    id: b2_z11
+  - platform: modbus_controller
+    modbus_controller_id: bat2
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B2 Zelle 12a"
+    address: 4917
+    id: b2_z12
+  - platform: modbus_controller
+    modbus_controller_id: bat2
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B2 Zelle 13a"
+    address: 4918
+    id: b2_z13
+  - platform: modbus_controller
+    modbus_controller_id: bat2
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B2 Zelle 14a"
+    address: 4919
+    id: b2_z14
+  - platform: modbus_controller
+    modbus_controller_id: bat2
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B2 Zelle 15a"
+    address: 4920
+    id: b2_z15
+  - platform: modbus_controller
+    modbus_controller_id: bat2
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B2 Zelle 16a"
+    address: 4921
+    id: b2_z16
+
+
+
+    # --- ZELL-DRIFT ---
+  - platform: template
+    name: "B2 Zell-Drift"
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    lambda: |-
+      float cells[] = {id(b2_z1).state, id(b2_z2).state, id(b2_z3).state, id(b2_z4).state,
+                       id(b2_z5).state, id(b2_z6).state, id(b2_z7).state, id(b2_z8).state,
+                       id(b2_z9).state, id(b2_z10).state, id(b2_z11).state, id(b2_z12).state,
+                       id(b2_z13).state, id(b2_z14).state, id(b2_z15).state, id(b2_z16).state};
+      float max_v = cells[0], min_v = cells[0];
+      for (int i = 1; i < 16; i++) {
+        if (cells[i] > max_v) max_v = cells[i];
+        if (cells[i] < min_v) min_v = cells[i];
+      }
+      return (max_v - min_v) * 1;
+    update_interval: 20s
+
+
+
+    # --- KAPAZITÄT (170 Ah FIX) ---
+  - platform: template
+    name: "B2 Gesamtkapazität1"
+    unit_of_measurement: "Ah"
+    lambda: "return 170.0;"
+    update_interval: 90s
+
+
+  - platform: modbus_controller
+    modbus_controller_id: bat2
+    name: "B2 SoH"
+    address: 0x133F
+    register_type: holding
+    unit_of_measurement: "%"
+    value_type: U_WORD
+    filters: 
+      - lambda: if (x > 100) return 100; else return x; 
+      - throttle: 90s
+          
+
+  - platform: modbus_controller
+    modbus_controller_id: bat2
+    name: "B2 Ladezyklen"
+    address: 0x133C
+    register_type: holding
+    unit_of_measurement: "Zyklen"
+    value_type: U_WORD
+
+
+  - platform: modbus_controller
+    modbus_controller_id: bat2
+    name: "B2 Zyklus Kapazität"
+    address: 0x133D
+    register_type: holding
+    unit_of_measurement: "Ah"
+    value_type: U_WORD
+    
+
+ 
+
+  # --- Battery 3 ---
+  # --- TEMPERATUREN BATTERIE 3 ---
+
+  - platform: modbus_controller
+    modbus_controller_id: bat3
+    name: "B3 Temp 1"
+    address: 0x133A
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    filters:
+      - lambda: |-
+          if (x >= 32767) return {};
+          return x;
+      - throttle: 60s
+
+
+  - platform: modbus_controller
+    modbus_controller_id: bat3
+    name: "B3 Temp 2"
+    address: 0x133B
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    filters:
+      - lambda: |-
+          if (x >= 32767) return {};
+          return x;
+      - throttle: 60s
+
+
+  - platform: modbus_controller
+    modbus_controller_id: bat3
+    name: "B3 Temp 3"
+    address: 0x133C
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    filters:
+      - lambda: |-
+          if (x >= 32767) return {};
+          return x;
+      - throttle: 60s  
+
+
+  - platform: modbus_controller
+    modbus_controller_id: bat3
+    name: "B3 Temp 4"
+    address: 0x133D
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    filters:
+      - lambda: |-
+          if (x >= 32767) return {};
+          return x;
+      - throttle: 60s
+
+
+
+  # --- SPANNUNG (Basis für Power-Berechnung) ---
+  - platform: modbus_controller
+    modbus_controller_id: bat3
+    id: b3_voltage
+    name: "B3 Spannung Gesamt"
+    address: 0x1306
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 2
+    filters:
+      - multiply: 0.01
+
+  # --- STROM (Current) ---
+  - platform: modbus_controller
+    modbus_controller_id: bat3
+    id: b3_current
+    name: "B3 Strom"
+    address: 0x1307
+    register_type: holding
+    value_type: S_WORD # S_WORD wichtig für Laden(-) / Entladen(+)
+    unit_of_measurement: "A"
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1
+
+  # --- LEISTUNG (Power - Berechnet) ---
+  - platform: template
+    name: "B3 Leistung"
+    id: b3_power
+    unit_of_measurement: "W"
+    device_class: power
+    state_class: measurement
+    accuracy_decimals: 1
+    lambda: |-
+      return id(b3_voltage).state * id(b3_current).state;
+    
+
+
+
+  - platform: modbus_controller
+    modbus_controller_id: bat3
+    name: "B3 BMS Temperatur"
+    address: 0x130A # Data9
+    register_type: holding
+    value_type: S_WORD
+    unit_of_measurement: "°C"
+    accuracy_decimals: 0
+    # Hier kein Multiplikator nötig laut "1°C" Unit in Tabelle
+
+  - platform: modbus_controller
+    modbus_controller_id: bat3
+    name: "B3 SOC"
+    id: b3_soc
+    address: 0x130B # Data10
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "%"
+    accuracy_decimals: 0
+
+
+   # Basis für Status (Laden/Entladen erlaubt)
+  - platform: modbus_controller
+    modbus_controller_id: bat3
+    id: b3_status_raw
+    address: 0x1302
+    register_type: holding
+    value_type: U_WORD
+    internal: false
+
+  # Basis für Fehlermeldungen (Alarme)
+  - platform: modbus_controller
+    modbus_controller_id: bat3
+    id: b3_fault_raw
+    address: 0x1303
+    register_type: holding
+    value_type: U_WORD
+    internal: false
+    
+
+
+  # --- KAPAZITÄT BATTERIE 3 (Register 0x1308 & 0x1309) ---
+
+ 
+
+
+  # --- MAXIMALE STRÖME (Charge / Discharge) ---
+  - platform: modbus_controller
+    modbus_controller_id: bat3
+    name: "B3 Max Ladestrom"
+    id: b3_ccl
+    address: 0x131E # Register für Max Charge Current
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "A"
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1 # Zeigt dann 80.0 A
+      - throttle: 50s
+
+
+  - platform: modbus_controller
+    modbus_controller_id: bat3
+    name: "B3 Max Entladestrom"
+    id: b3_dcl
+    address: 0x131F # Register für Max Discharge Current
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "A"
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1 # Zeigt dann 80.0 A
+      - throttle: 50s
+
+
+   # --- RÜCKLESE-SENSOR FÜR DIE LADEGRENZE ---
+  - platform: modbus_controller
+    modbus_controller_id: bat3
+    name: "B3 Ladespannung (BMS Bestätigung)"
+    address: 0x0100 # Dasselbe Register wie beim 'number' Feld
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1 # Wandelt 560 zurück in 56.0V
+      - throttle: 50s
+    
+
+   # --- DIE 16 ZELLEN (Korrekt eingerückt) ---
+  - platform: modbus_controller
+    modbus_controller_id: bat3
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters:
+      - multiply: 0.001
+    # Ab hier die 16 Sensoren (Adressen 4906 bis 4921)
+    name: "B3 Zelle 01a"
+    address: 4906
+    id: b3_z1
+  - platform: modbus_controller
+    modbus_controller_id: bat3
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B3 Zelle 02a"
+    address: 4907
+    id: b3_z2
+  - platform: modbus_controller
+    modbus_controller_id: bat3
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B3 Zelle 03a"
+    address: 4908
+    id: b3_z3
+  - platform: modbus_controller
+    modbus_controller_id: bat3
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B3 Zelle 04a"
+    address: 4909
+    id: b3_z4
+  - platform: modbus_controller
+    modbus_controller_id: bat3
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B3 Zelle 05a"
+    address: 4910
+    id: b3_z5
+  - platform: modbus_controller
+    modbus_controller_id: bat3
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B3 Zelle 06a"
+    address: 4911
+    id: b3_z6
+  - platform: modbus_controller
+    modbus_controller_id: bat3
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B3 Zelle 07a"
+    address: 4912
+    id: b3_z7
+  - platform: modbus_controller
+    modbus_controller_id: bat3
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B3 Zelle 08a"
+    address: 4913
+    id: b3_z8
+  - platform: modbus_controller
+    modbus_controller_id: bat3
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B3 Zelle 09a"
+    address: 4914
+    id: b3_z9
+  - platform: modbus_controller
+    modbus_controller_id: bat3
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B3 Zelle 10a"
+    address: 4915
+    id: b3_z10
+  - platform: modbus_controller
+    modbus_controller_id: bat3
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B3 Zelle 11a"
+    address: 4916
+    id: b3_z11
+  - platform: modbus_controller
+    modbus_controller_id: bat3
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B3 Zelle 12a"
+    address: 4917
+    id: b3_z12
+  - platform: modbus_controller
+    modbus_controller_id: bat3
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B3 Zelle 13a"
+    address: 4918
+    id: b3_z13
+  - platform: modbus_controller
+    modbus_controller_id: bat3
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B3 Zelle 14a"
+    address: 4919
+    id: b3_z14
+  - platform: modbus_controller
+    modbus_controller_id: bat3
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B3 Zelle 15a"
+    address: 4920
+    id: b3_z15
+  - platform: modbus_controller
+    modbus_controller_id: bat3
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B3 Zelle 16a"
+    address: 4921
+    id: b3_z16
+
+
+
+    # --- ZELL-DRIFT ---
+  - platform: template
+    name: "B3 Zell-Drift"
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    lambda: |-
+      float cells[] = {id(b3_z1).state, id(b3_z2).state, id(b3_z3).state, id(b3_z4).state,
+                       id(b3_z5).state, id(b3_z6).state, id(b3_z7).state, id(b3_z8).state,
+                       id(b3_z9).state, id(b3_z10).state, id(b3_z11).state, id(b3_z12).state,
+                       id(b3_z13).state, id(b3_z14).state, id(b3_z15).state, id(b3_z16).state};
+      float max_v = cells[0], min_v = cells[0];
+      for (int i = 1; i < 16; i++) {
+        if (cells[i] > max_v) max_v = cells[i];
+        if (cells[i] < min_v) min_v = cells[i];
+      }
+      return (max_v - min_v) * 1;
+    update_interval: 20s
+
+
+
+    # --- KAPAZITÄT (170 Ah FIX) ---
+  - platform: template
+    name: "B3 Gesamtkapazität1"
+    unit_of_measurement: "Ah"
+    lambda: "return 170.0;"
+    update_interval: 90s
+
+
+  - platform: modbus_controller
+    modbus_controller_id: bat3
+    name: "B3 SoH"
+    address: 0x133F
+    register_type: holding
+    unit_of_measurement: "%"
+    value_type: U_WORD
+    filters: 
+      - lambda: if (x > 100) return 100; else return x; 
+      - throttle: 90s
+          
+
+  - platform: modbus_controller
+    modbus_controller_id: bat3
+    name: "B3 Ladezyklen"
+    address: 0x133C
+    register_type: holding
+    unit_of_measurement: "Zyklen"
+    value_type: U_WORD
+
+  - platform: modbus_controller
+    modbus_controller_id: bat3
+    name: "B3 Zyklus Kapazität"
+    address: 0x133D
+    register_type: holding
+    unit_of_measurement: "Ah"
+    value_type: U_WORD
+       
+
+
+
+  # --- Battery 4 ---
+  # --- TEMPERATUREN BATTERIE 4 ---
+
+  - platform: modbus_controller
+    modbus_controller_id: bat4
+    name: "B4 Temp 1"
+    address: 0x133A
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    filters:
+      - lambda: |-
+          if (x >= 32767) return {};
+          return x;
+      - throttle: 60s 
+
+
+  - platform: modbus_controller
+    modbus_controller_id: bat4
+    name: "B4 Temp 2"
+    address: 0x133B
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    filters:
+      - lambda: |-
+          if (x >= 32767) return {};
+          return x;
+      - throttle: 60s     
+
+
+  - platform: modbus_controller
+    modbus_controller_id: bat4
+    name: "B4 Temp 3"
+    address: 0x133C
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    filters:
+      - lambda: |-
+          if (x >= 32767) return {};
+          return x;
+      - throttle: 60s 
+
+
+  - platform: modbus_controller
+    modbus_controller_id: bat4
+    name: "B4 Temp 4"
+    address: 0x133D
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    filters:
+      - lambda: |-
+          if (x >= 32767) return {};
+          return x;
+      - throttle: 60s
+
+
+  # --- SPANNUNG (Basis für Power-Berechnung) ---
+  - platform: modbus_controller
+    modbus_controller_id: bat4
+    id: b4_voltage
+    name: "B4 Spannung Gesamt"
+    address: 0x1306
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 2
+    filters:
+      - multiply: 0.01
+
+  # --- STROM (Current) ---
+  - platform: modbus_controller
+    modbus_controller_id: bat4
+    id: b4_current
+    name: "B4 Strom"
+    address: 0x1307
+    register_type: holding
+    value_type: S_WORD # S_WORD wichtig für Laden(-) / Entladen(+)
+    unit_of_measurement: "A"
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1
+
+  # --- LEISTUNG (Power - Berechnet) ---
+  - platform: template
+    name: "B4 Leistung"
+    id: b4_power
+    unit_of_measurement: "W"
+    device_class: power
+    state_class: measurement
+    accuracy_decimals: 1
+    lambda: |-
+      return id(b4_voltage).state * id(b4_current).state;
+    
+
+
+
+  - platform: modbus_controller
+    modbus_controller_id: bat4
+    name: "B4 BMS Temperatur"
+    address: 0x130A # Data9
+    register_type: holding
+    value_type: S_WORD
+    unit_of_measurement: "°C"
+    accuracy_decimals: 0
+    # Hier kein Multiplikator nötig laut "1°C" Unit in Tabelle
+
+  - platform: modbus_controller
+    modbus_controller_id: bat4
+    name: "B4 SOC"
+    id: b4_soc 
+    address: 0x130B # Data10
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "%"
+    accuracy_decimals: 0
+
+
+   # Basis für Status (Laden/Entladen erlaubt)
+  - platform: modbus_controller
+    modbus_controller_id: bat4
+    id: b4_status_raw
+    address: 0x1302
+    register_type: holding
+    value_type: U_WORD
+    internal: false
+
+  # Basis für Fehlermeldungen (Alarme)
+  - platform: modbus_controller
+    modbus_controller_id: bat4
+    id: b4_fault_raw
+    address: 0x1303
+    register_type: holding
+    value_type: U_WORD
+    internal: false
+  
+
+
+  # --- KAPAZITÄT BATTERIE 4 (Register 0x1308 & 0x1309) ---
+
+
+
+  # --- MAXIMALE STRÖME (Charge / Discharge) ---
+  - platform: modbus_controller
+    modbus_controller_id: bat4
+    name: "B4 Max Ladestrom"
+    id: b4_ccl
+    address: 0x131E # Register für Max Charge Current
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "A"
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1 # Zeigt dann 80.0 A
+      - throttle: 50s
+
+
+  - platform: modbus_controller
+    modbus_controller_id: bat4
+    name: "B4 Max Entladestrom"
+    id: b4_dcl
+    address: 0x131F # Register für Max Discharge Current
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "A"
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1 # Zeigt dann 80.0 A
+      - throttle: 50s
+
+
+   # --- RÜCKLESE-SENSOR FÜR DIE LADEGRENZE ---
+  - platform: modbus_controller
+    modbus_controller_id: bat4
+    name: "B4 Ladespannung (BMS Bestätigung)"
+    address: 0x0100 # Dasselbe Register wie beim 'number' Feld
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1 # Wandelt 560 zurück in 56.0V
+      - throttle: 50s
+    
+
+   # --- DIE 16 ZELLEN (Korrekt eingerückt) ---
+  - platform: modbus_controller
+    modbus_controller_id: bat4
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters:
+      - multiply: 0.001
+    # Ab hier die 16 Sensoren (Adressen 4906 bis 4921)
+    name: "B4 Zelle 01a"
+    address: 4906
+    id: b4_z1
+  - platform: modbus_controller
+    modbus_controller_id: bat4
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B4 Zelle 02a"
+    address: 4907
+    id: b4_z2
+  - platform: modbus_controller
+    modbus_controller_id: bat4
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B4 Zelle 03a"
+    address: 4908
+    id: b4_z3
+  - platform: modbus_controller
+    modbus_controller_id: bat4
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B4 Zelle 04a"
+    address: 4909
+    id: b4_z4
+  - platform: modbus_controller
+    modbus_controller_id: bat4
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B4 Zelle 05a"
+    address: 4910
+    id: b4_z5
+  - platform: modbus_controller
+    modbus_controller_id: bat4
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B4 Zelle 06a"
+    address: 4911
+    id: b4_z6
+  - platform: modbus_controller
+    modbus_controller_id: bat4
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B4 Zelle 07a"
+    address: 4912
+    id: b4_z7
+  - platform: modbus_controller
+    modbus_controller_id: bat4
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B4 Zelle 08a"
+    address: 4913
+    id: b4_z8
+  - platform: modbus_controller
+    modbus_controller_id: bat4
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B4 Zelle 09a"
+    address: 4914
+    id: b4_z9
+  - platform: modbus_controller
+    modbus_controller_id: bat4
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B4 Zelle 10a"
+    address: 4915
+    id: b4_z10
+  - platform: modbus_controller
+    modbus_controller_id: bat4
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B4 Zelle 11a"
+    address: 4916
+    id: b4_z11
+  - platform: modbus_controller
+    modbus_controller_id: bat4
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B4 Zelle 12a"
+    address: 4917
+    id: b4_z12
+  - platform: modbus_controller
+    modbus_controller_id: bat4
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B4 Zelle 13a"
+    address: 4918
+    id: b4_z13
+  - platform: modbus_controller
+    modbus_controller_id: bat4
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B4 Zelle 14a"
+    address: 4919
+    id: b4_z14
+  - platform: modbus_controller
+    modbus_controller_id: bat4
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B4 Zelle 15a"
+    address: 4920
+    id: b4_z15
+  - platform: modbus_controller
+    modbus_controller_id: bat4
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B4 Zelle 16a"
+    address: 4921
+    id: b4_z16
+
+
+
+    # --- ZELL-DRIFT ---
+  - platform: template
+    name: "B4 Zell-Drift"
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    lambda: |-
+      float cells[] = {id(b4_z1).state, id(b4_z2).state, id(b4_z3).state, id(b4_z4).state,
+                       id(b4_z5).state, id(b4_z6).state, id(b4_z7).state, id(b4_z8).state,
+                       id(b4_z9).state, id(b4_z10).state, id(b4_z11).state, id(b4_z12).state,
+                       id(b4_z13).state, id(b4_z14).state, id(b4_z15).state, id(b4_z16).state};
+      float max_v = cells[0], min_v = cells[0];
+      for (int i = 1; i < 16; i++) {
+        if (cells[i] > max_v) max_v = cells[i];
+        if (cells[i] < min_v) min_v = cells[i];
+      }
+      return (max_v - min_v) * 1;
+    update_interval: 20s
+
+
+
+    # --- KAPAZITÄT (170 Ah FIX) ---
+  - platform: template
+    name: "B4 Gesamtkapazität1"
+    unit_of_measurement: "Ah"
+    lambda: "return 170.0;"
+    update_interval: 90s
+
+
+  - platform: modbus_controller
+    modbus_controller_id: bat4
+    name: "B4 SoH"
+    address: 0x133F
+    register_type: holding
+    unit_of_measurement: "%"
+    value_type: U_WORD
+    filters: 
+      - lambda: if (x > 100) return 100; else return x; 
+      - throttle: 90s
+          
+
+  - platform: modbus_controller
+    modbus_controller_id: bat4
+    name: "B4 Ladezyklen"
+    address: 0x133C
+    register_type: holding
+    unit_of_measurement: "Zyklen"
+    value_type: U_WORD
+
+  - platform: modbus_controller
+    modbus_controller_id: bat4
+    name: "B4 Zyklus Kapazität"
+    address: 0x133D
+    register_type: holding
+    unit_of_measurement: "Ah"
+    value_type: U_WORD
+      
+
+
+
+  # --- Battery 5 ---
+  # --- TEMPERATUREN BATTERIE 5 ---
+
+  - platform: modbus_controller
+    modbus_controller_id: bat5
+    name: "B5 Temp 1"
+    address: 0x133A
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    filters:
+      - lambda: |-
+          if (x >= 32767) return {};
+          return x;
+      - throttle: 60s
+
+
+  - platform: modbus_controller
+    modbus_controller_id: bat5
+    name: "B5 Temp 2"
+    address: 0x133B
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    filters:
+      - lambda: |-
+          if (x >= 32767) return {};
+          return x;
+      - throttle: 60s
+
+
+  - platform: modbus_controller
+    modbus_controller_id: bat5
+    name: "B5 Temp 3"
+    address: 0x133C
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    filters:
+      - lambda: |-
+          if (x >= 32767) return {};
+          return x;
+      - throttle: 60s
+
+
+  - platform: modbus_controller
+    modbus_controller_id: bat5
+    name: "B5 Temp 4"
+    address: 0x133D
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    filters:
+      - lambda: |-
+          if (x >= 32767) return {};
+          return x;
+      - throttle: 60s     
+
+
+
+  # --- SPANNUNG (Basis für Power-Berechnung) ---
+  - platform: modbus_controller
+    modbus_controller_id: bat5
+    id: b5_voltage
+    name: "B5 Spannung Gesamt"
+    address: 0x1306
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 2
+    filters:
+      - multiply: 0.01
+
+  # --- STROM (Current) ---
+  - platform: modbus_controller
+    modbus_controller_id: bat5
+    id: b5_current
+    name: "B5 Strom"
+    address: 0x1307
+    register_type: holding
+    value_type: S_WORD # S_WORD wichtig für Laden(-) / Entladen(+)
+    unit_of_measurement: "A"
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1
+
+  # --- LEISTUNG (Power - Berechnet) ---
+  - platform: template
+    name: "B5 Leistung"
+    id: b5_power
+    unit_of_measurement: "W"
+    device_class: power
+    state_class: measurement
+    accuracy_decimals: 1
+    lambda: |-
+      return id(b3_voltage).state * id(b3_current).state;
+    
+
+
+
+  - platform: modbus_controller
+    modbus_controller_id: bat5
+    name: "B5 BMS Temperatur"
+    address: 0x130A # Data9
+    register_type: holding
+    value_type: S_WORD
+    unit_of_measurement: "°C"
+    accuracy_decimals: 0
+    # Hier kein Multiplikator nötig laut "1°C" Unit in Tabelle
+
+  - platform: modbus_controller
+    modbus_controller_id: bat5
+    name: "B5 SOC"
+    id: b5_soc 
+    address: 0x130B # Data10
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "%"
+    accuracy_decimals: 0
+
+
+   # Basis für Status (Laden/Entladen erlaubt)
+  - platform: modbus_controller
+    modbus_controller_id: bat5
+    id: b5_status_raw
+    address: 0x1302
+    register_type: holding
+    value_type: U_WORD
+    internal: false
+
+  # Basis für Fehlermeldungen (Alarme)
+  - platform: modbus_controller
+    modbus_controller_id: bat5
+    id: b5_fault_raw
+    address: 0x1303
+    register_type: holding
+    value_type: U_WORD
+    internal: false
+    
+
+
+
+  # --- KAPAZITÄT BATTERIE 5 (Register 0x1308 & 0x1309) ---
+
+ 
+
+  # --- MAXIMALE STRÖME (Charge / Discharge) ---
+  - platform: modbus_controller
+    modbus_controller_id: bat5
+    name: "B5 Max Ladestrom"
+    id: b5_ccl
+    address: 0x131E # Register für Max Charge Current
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "A"
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1 # Zeigt dann 80.0 A
+      - throttle: 50s
+
+
+  - platform: modbus_controller
+    modbus_controller_id: bat5
+    name: "B5 Max Entladestrom"
+    id: b5_dcl
+    address: 0x131F # Register für Max Discharge Current
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "A"
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1 # Zeigt dann 80.0 A
+      - throttle: 50s
+
+
+   # --- RÜCKLESE-SENSOR FÜR DIE LADEGRENZE ---
+  - platform: modbus_controller
+    modbus_controller_id: bat5
+    name: "B5 Ladespannung (BMS Bestätigung)"
+    address: 0x0100 # Dasselbe Register wie beim 'number' Feld
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1 # Wandelt 560 zurück in 56.0V
+      - throttle: 50s
+    
+
+   # --- DIE 16 ZELLEN (Korrekt eingerückt) ---
+  - platform: modbus_controller
+    modbus_controller_id: bat5
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters:
+      - multiply: 0.001
+    # Ab hier die 16 Sensoren (Adressen 4906 bis 4921)
+    name: "B5 Zelle 01a"
+    address: 4906
+    id: b5_z1
+  - platform: modbus_controller
+    modbus_controller_id: bat5
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B5 Zelle 02a"
+    address: 4907
+    id: b5_z2
+  - platform: modbus_controller
+    modbus_controller_id: bat5
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B5 Zelle 03a"
+    address: 4908
+    id: b5_z3
+  - platform: modbus_controller
+    modbus_controller_id: bat5
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B5 Zelle 04a"
+    address: 4909
+    id: b5_z4
+  - platform: modbus_controller
+    modbus_controller_id: bat5
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B5 Zelle 05a"
+    address: 4910
+    id: b5_z5
+  - platform: modbus_controller
+    modbus_controller_id: bat5
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B5 Zelle 06a"
+    address: 4911
+    id: b5_z6
+  - platform: modbus_controller
+    modbus_controller_id: bat5
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B5 Zelle 07a"
+    address: 4912
+    id: b5_z7
+  - platform: modbus_controller
+    modbus_controller_id: bat5
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B5 Zelle 08a"
+    address: 4913
+    id: b5_z8
+  - platform: modbus_controller
+    modbus_controller_id: bat5
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B5 Zelle 09a"
+    address: 4914
+    id: b5_z9
+  - platform: modbus_controller
+    modbus_controller_id: bat5
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B5 Zelle 10a"
+    address: 4915
+    id: b5_z10
+  - platform: modbus_controller
+    modbus_controller_id: bat5
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B5 Zelle 11a"
+    address: 4916
+    id: b5_z11
+  - platform: modbus_controller
+    modbus_controller_id: bat5
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B5 Zelle 12a"
+    address: 4917
+    id: b5_z12
+  - platform: modbus_controller
+    modbus_controller_id: bat5
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B5 Zelle 13a"
+    address: 4918
+    id: b5_z13
+  - platform: modbus_controller
+    modbus_controller_id: bat5
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B5 Zelle 14a"
+    address: 4919
+    id: b5_z14
+  - platform: modbus_controller
+    modbus_controller_id: bat5
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B5 Zelle 15a"
+    address: 4920
+    id: b5_z15
+  - platform: modbus_controller
+    modbus_controller_id: bat5
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B5 Zelle 16a"
+    address: 4921
+    id: b5_z16
+
+
+
+    # --- ZELL-DRIFT ---
+  - platform: template
+    name: "B5 Zell-Drift"
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    lambda: |-
+      float cells[] = {id(b5_z1).state, id(b5_z2).state, id(b5_z3).state, id(b5_z4).state,
+                       id(b5_z5).state, id(b5_z6).state, id(b5_z7).state, id(b5_z8).state,
+                       id(b5_z9).state, id(b5_z10).state, id(b5_z11).state, id(b5_z12).state,
+                       id(b5_z13).state, id(b5_z14).state, id(b5_z15).state, id(b5_z16).state};
+      float max_v = cells[0], min_v = cells[0];
+      for (int i = 1; i < 16; i++) {
+        if (cells[i] > max_v) max_v = cells[i];
+        if (cells[i] < min_v) min_v = cells[i];
+      }
+      return (max_v - min_v) * 1;
+    update_interval: 20s
+
+
+
+    # --- KAPAZITÄT (170 Ah FIX) ---
+  - platform: template
+    name: "B5 Gesamtkapazität1"
+    unit_of_measurement: "Ah"
+    lambda: "return 170.0;"
+    update_interval: 90s
+
+
+  - platform: modbus_controller
+    modbus_controller_id: bat5
+    name: "B5 SoH"
+    address: 0x133F
+    register_type: holding
+    unit_of_measurement: "%"
+    value_type: U_WORD
+    filters: 
+      - lambda: if (x > 100) return 100; else return x; 
+      - throttle: 90s
+          
+
+  - platform: modbus_controller
+    modbus_controller_id: bat5
+    name: "B5 Ladezyklen"
+    address: 0x133C
+    register_type: holding
+    unit_of_measurement: "Zyklen"
+    value_type: U_WORD
+
+  - platform: modbus_controller
+    modbus_controller_id: bat5
+    name: "B5 Zyklus Kapazität"
+    address: 0x133D
+    register_type: holding
+    unit_of_measurement: "Ah"
+    value_type: U_WORD
+       
+
+
+
+  # --- Battery 6 ---
+  # --- TEMPERATUREN BATTERIE 6 ---
+
+  - platform: modbus_controller
+    modbus_controller_id: bat6
+    name: "B6 Temp 1"
+    address: 0x133A
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    filters:
+      - lambda: |-
+          if (x >= 32767) return {};
+          return x;
+      - throttle: 60s
+
+
+  - platform: modbus_controller
+    modbus_controller_id: bat6
+    name: "B6 Temp 2"
+    address: 0x133B
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    filters:
+      - lambda: |-
+          if (x >= 32767) return {};
+          return x;
+      - throttle: 60s
+
+
+  - platform: modbus_controller
+    modbus_controller_id: bat6
+    name: "B6 Temp 3"
+    address: 0x133C
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    filters:
+      - lambda: |-
+          if (x >= 32767) return {};
+          return x;
+      - throttle: 60s
+
+
+  - platform: modbus_controller
+    modbus_controller_id: bat6
+    name: "B6 Temp 4"
+    address: 0x133D
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    filters:
+      - lambda: |-
+          if (x >= 32767) return {};
+          return x;
+      - throttle: 60s
+      
+
+
+  # --- SPANNUNG (Basis für Power-Berechnung) ---
+  - platform: modbus_controller
+    modbus_controller_id: bat6
+    id: b6_voltage
+    name: "B6 Spannung Gesamt"
+    address: 0x1306
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 2
+    filters:
+      - multiply: 0.01
+
+  # --- STROM (Current) ---
+  - platform: modbus_controller
+    modbus_controller_id: bat6
+    id: b6_current
+    name: "B6 Strom"
+    address: 0x1307
+    register_type: holding
+    value_type: S_WORD # S_WORD wichtig für Laden(-) / Entladen(+)
+    unit_of_measurement: "A"
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1
+
+  # --- LEISTUNG (Power - Berechnet) ---
+  - platform: template
+    name: "B6 Leistung"
+    id: b6_power
+    unit_of_measurement: "W"
+    device_class: power
+    state_class: measurement
+    accuracy_decimals: 1
+    lambda: |-
+      return id(b6_voltage).state * id(b6_current).state;
+    
+
+
+
+  - platform: modbus_controller
+    modbus_controller_id: bat6
+    name: "B6 BMS Temperatur"
+    address: 0x130A # Data9
+    register_type: holding
+    value_type: S_WORD
+    unit_of_measurement: "°C"
+    accuracy_decimals: 0
+    # Hier kein Multiplikator nötig laut "1°C" Unit in Tabelle
+
+  - platform: modbus_controller
+    modbus_controller_id: bat6
+    name: "B6 SOC"
+    id: b6_soc 
+    address: 0x130B # Data10
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "%"
+    accuracy_decimals: 0
+
+
+   # Basis für Status (Laden/Entladen erlaubt)
+  - platform: modbus_controller
+    modbus_controller_id: bat6
+    id: b6_status_raw
+    address: 0x1302
+    register_type: holding
+    value_type: U_WORD
+    internal: false
+
+  # Basis für Fehlermeldungen (Alarme)
+  - platform: modbus_controller
+    modbus_controller_id: bat6
+    id: b6_fault_raw
+    address: 0x1303
+    register_type: holding
+    value_type: U_WORD
+    internal: false
+  
+    
+
+
+  # --- KAPAZITÄT BATTERIE 6 (Register 0x1308 & 0x1309) ---
+
+ 
+
+  # --- MAXIMALE STRÖME (Charge / Discharge) ---
+  - platform: modbus_controller
+    modbus_controller_id: bat6
+    name: "B6 Max Ladestrom"
+    id: b6_ccl
+    address: 0x131E # Register für Max Charge Current
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "A"
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1 # Zeigt dann 80.0 A
+      - throttle: 50s
+
+
+  - platform: modbus_controller
+    modbus_controller_id: bat6
+    name: "B6 Max Entladestrom"
+    id: b6_dcl
+    address: 0x131F # Register für Max Discharge Current
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "A"
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1 # Zeigt dann 80.0 A
+      - throttle: 50s
+
+
+   # --- RÜCKLESE-SENSOR FÜR DIE LADEGRENZE ---
+  - platform: modbus_controller
+    modbus_controller_id: bat6
+    name: "B6 Ladespannung (BMS Bestätigung)"
+    address: 0x0100 # Dasselbe Register wie beim 'number' Feld
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1 # Wandelt 560 zurück in 56.0V
+      - throttle: 50s
+    
+
+   # --- DIE 16 ZELLEN (Korrekt eingerückt) ---
+  - platform: modbus_controller
+    modbus_controller_id: bat6
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters:
+      - multiply: 0.001
+    # Ab hier die 16 Sensoren (Adressen 4906 bis 4921)
+    name: "B6 Zelle 01a"
+    address: 4906
+    id: b6_z1
+  - platform: modbus_controller
+    modbus_controller_id: bat6
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B6 Zelle 02a"
+    address: 4907
+    id: b6_z2
+  - platform: modbus_controller
+    modbus_controller_id: bat6
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B6 Zelle 03a"
+    address: 4908
+    id: b6_z3
+  - platform: modbus_controller
+    modbus_controller_id: bat6
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B6 Zelle 04a"
+    address: 4909
+    id: b6_z4
+  - platform: modbus_controller
+    modbus_controller_id: bat6
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B6 Zelle 05a"
+    address: 4910
+    id: b6_z5
+  - platform: modbus_controller
+    modbus_controller_id: bat6
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B6 Zelle 06a"
+    address: 4911
+    id: b6_z6
+  - platform: modbus_controller
+    modbus_controller_id: bat6
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B6 Zelle 07a"
+    address: 4912
+    id: b6_z7
+  - platform: modbus_controller
+    modbus_controller_id: bat6
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B6 Zelle 08a"
+    address: 4913
+    id: b6_z8
+  - platform: modbus_controller
+    modbus_controller_id: bat6
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B6 Zelle 09a"
+    address: 4914
+    id: b6_z9
+  - platform: modbus_controller
+    modbus_controller_id: bat6
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B6 Zelle 10a"
+    address: 4915
+    id: b6_z10
+  - platform: modbus_controller
+    modbus_controller_id: bat6
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B6 Zelle 11a"
+    address: 4916
+    id: b6_z11
+  - platform: modbus_controller
+    modbus_controller_id: bat6
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B6 Zelle 12a"
+    address: 4917
+    id: b6_z12
+  - platform: modbus_controller
+    modbus_controller_id: bat6
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B6 Zelle 13a"
+    address: 4918
+    id: b6_z13
+  - platform: modbus_controller
+    modbus_controller_id: bat6
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B6 Zelle 14a"
+    address: 4919
+    id: b6_z14
+  - platform: modbus_controller
+    modbus_controller_id: bat6
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B6 Zelle 15a"
+    address: 4920
+    id: b6_z15
+  - platform: modbus_controller
+    modbus_controller_id: bat6
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    filters: 
+      - multiply: 0.001
+    name: "B6 Zelle 16a"
+    address: 4921
+    id: b6_z16
+
+
+
+    # --- ZELL-DRIFT ---
+  - platform: template
+    name: "B6 Zell-Drift"
+    unit_of_measurement: "V"
+    accuracy_decimals: 3
+    lambda: |-
+      float cells[] = {id(b6_z1).state, id(b6_z2).state, id(b6_z3).state, id(b6_z4).state,
+                       id(b6_z5).state, id(b6_z6).state, id(b6_z7).state, id(b6_z8).state,
+                       id(b6_z9).state, id(b6_z10).state, id(b6_z11).state, id(b6_z12).state,
+                       id(b6_z13).state, id(b6_z14).state, id(b6_z15).state, id(b6_z16).state};
+      float max_v = cells[0], min_v = cells[0];
+      for (int i = 1; i < 16; i++) {
+        if (cells[i] > max_v) max_v = cells[i];
+        if (cells[i] < min_v) min_v = cells[i];
+      }
+      return (max_v - min_v) * 1;
+    update_interval: 20s
+
+
+
+    # --- KAPAZITÄT (170 Ah FIX) ---
+  - platform: template
+    name: "B6 Gesamtkapazität1"
+    unit_of_measurement: "Ah"
+    lambda: "return 170.0;"
+    update_interval: 90s
+
+
+  - platform: modbus_controller
+    modbus_controller_id: bat6
+    name: "B6 SoH"
+    address: 0x133F
+    register_type: holding
+    unit_of_measurement: "%"
+    value_type: U_WORD
+    filters: 
+      - lambda: if (x > 100) return 100; else return x; 
+      - throttle: 90s
+          
+
+  - platform: modbus_controller
+    modbus_controller_id: bat6
+    name: "B6 Ladezyklen"
+    address: 0x133C
+    register_type: holding
+    unit_of_measurement: "Zyklen"
+    value_type: U_WORD
+
+  - platform: modbus_controller
+    modbus_controller_id: bat6
+    name: "B6 Zyklus Kapazität"
+    address: 0x133D
+    register_type: holding
+    unit_of_measurement: "Ah"
+    value_type: U_WORD
+       
+
+
+
+
+
+
+binary_sensor:
+
+
+  - platform: template
+    name: "B1 Balancing Aktiv"
+    id: b1_is_balancing
+    icon: "mdi:scale-balance"
+    # Wir prüfen Bit 4 (Wert 16) im Status-Register 0x1302
+    lambda: "return ((int)id(b1_status_raw).state & 0x10);" 
+
+
+  - platform: template
+    name: "B2 Balancing Aktiv"
+    id: b2_is_balancing
+    icon: "mdi:scale-balance"
+    # Wir prüfen Bit 4 (Wert 16) im Status-Register 0x1302
+    lambda: "return ((int)id(b2_status_raw).state & 0x10);" 
+
+
+  - platform: template
+    name: "B3 Balancing Aktiv"
+    id: b3_is_balancing
+    icon: "mdi:scale-balance"
+    # Wir prüfen Bit 4 (Wert 16) im Status-Register 0x1302
+    lambda: "return ((int)id(b3_status_raw).state & 0x10);" 
+
+
+
+  - platform: template
+    name: "B4 Balancing Aktiv"
+    id: b4_is_balancing
+    icon: "mdi:scale-balance"
+    # Wir prüfen Bit 4 (Wert 16) im Status-Register 0x1302
+    lambda: "return ((int)id(b4_status_raw).state & 0x10);" 
+
+
+
+  - platform: template
+    name: "B5 Balancing Aktiv"
+    id: b5_is_balancing
+    icon: "mdi:scale-balance"
+    # Wir prüfen Bit 4 (Wert 16) im Status-Register 0x1302
+    lambda: "return ((int)id(b5_status_raw).state & 0x10);" 
+
+
+
+  - platform: template
+    name: "B6 Balancing Aktiv"
+    id: b6_is_balancing
+    icon: "mdi:scale-balance"
+    # Wir prüfen Bit 4 (Wert 16) im Status-Register 0x1302
+    lambda: "return ((int)id(b6_status_raw).state & 0x10);" 
+
+
+
+
+
+
+   # --- Battery1 ---
+   # --- STATUS ---
+
+  - platform: template
+    name: "B1 wird entladen"
+    id: b1_is_discharging
+    # Nimm 'power' oder lass die Zeile ganz weg für Standard An/Aus
+    device_class: power 
+    lambda: "return id(b1_current).state > 0.1;"
+
+  - platform: template
+    name: "B1 wird geladen"
+    id: b1_is_charging
+    # 'battery_charging' zeigt im Dashboard ein Blitz-Icon und "Wird geladen"
+    device_class: battery_charging
+    lambda: "return id(b1_current).state < -0.1;"
+
+
+ 
+
+
+
+   # --- Battery2 ---
+   # --- STATUS ---
+
+  - platform: template
+    name: "B2 wird entladen"
+    id: b2_is_discharging
+    # Nimm 'power' oder lass die Zeile ganz weg für Standard An/Aus
+    device_class: power 
+    lambda: "return id(b2_current).state > 0.1;"
+
+  - platform: template
+    name: "B2 wird geladen"
+    id: b2_is_charging
+    # 'battery_charging' zeigt im Dashboard ein Blitz-Icon und "Wird geladen"
+    device_class: battery_charging
+    lambda: "return id(b2_current).state < -0.1;"
+
+ 
+
+
+
+   # --- Battery3 ---
+   # --- STATUS ---
+  
+  - platform: template
+    name: "B3 wird entladen"
+    id: b3_is_discharging
+    # Nimm 'power' oder lass die Zeile ganz weg für Standard An/Aus
+    device_class: power 
+    lambda: "return id(b3_current).state > 0.1;"
+
+  - platform: template
+    name: "B3 wird geladen"
+    id: b3_is_charging
+    # 'battery_charging' zeigt im Dashboard ein Blitz-Icon und "Wird geladen"
+    device_class: battery_charging
+    lambda: "return id(b3_current).state < -0.1;" 
+
+
+
+
+
+
+   # --- Battery4 ---
+   # --- STATUS ---
+  
+  - platform: template
+    name: "B4 wird entladen"
+    id: b4_is_discharging
+    # Nimm 'power' oder lass die Zeile ganz weg für Standard An/Aus
+    device_class: power 
+    lambda: "return id(b4_current).state > 0.1;"
+
+  - platform: template
+    name: "B4 wird geladen"
+    id: b4_is_charging
+    # 'battery_charging' zeigt im Dashboard ein Blitz-Icon und "Wird geladen"
+    device_class: battery_charging
+    lambda: "return id(b4_current).state < -0.1;" 
+
+
+
+
+
+   # --- Battery5 ---
+   # --- STATUS ---
+  
+  - platform: template
+    name: "B5 wird entladen"
+    id: b5_is_discharging
+    # Nimm 'power' oder lass die Zeile ganz weg für Standard An/Aus
+    device_class: power 
+    lambda: "return id(b5_current).state > 0.1;"
+
+  - platform: template
+    name: "B5 wird geladen"
+    id: b5_is_charging
+    # 'battery_charging' zeigt im Dashboard ein Blitz-Icon und "Wird geladen"
+    device_class: battery_charging
+    lambda: "return id(b5_current).state < -0.1;" 
+
+
+  
+
+
+
+   # --- Battery6 ---
+   # --- STATUS ---
+ 
+  - platform: template
+    name: "B6 wird entladen"
+    id: b6_is_discharging
+    # Nimm 'power' oder lass die Zeile ganz weg für Standard An/Aus
+    device_class: power 
+    lambda: "return id(b6_current).state > 0.1;"
+
+  - platform: template
+    name: "B6 wird geladen"
+    id: b6_is_charging
+    # 'battery_charging' zeigt im Dashboard ein Blitz-Icon und "Wird geladen"
+    device_class: battery_charging
+    lambda: "return id(b6_current).state < -0.1;"
+
+
+  
+
+
+
+
+
+
+
+        
+
 
